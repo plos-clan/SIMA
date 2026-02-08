@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "sima-init",
+    "xtask",
+]
+resolver = "3"
+
+[profile.release]
+lto = "thin"
+opt-level = "z"
