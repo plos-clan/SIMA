@@ -1,6 +1,6 @@
+# Build cache
 /target
 
-Cargo.lock
-
+# Some bad files
 .idea
 .DS_Store

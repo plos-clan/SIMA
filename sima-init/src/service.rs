@@ -16,7 +16,6 @@ use tokio::time::timeout;
 pub enum ServiceStatus {
     Running,
     Stopped,
-    Errored,
 }
 
 pub struct ServiceState {
@@ -95,7 +94,6 @@ impl ServiceManager {
             }
             Err(e) => {
                 error!("Failed to start service {}: {}", name, e);
-                state.status = ServiceStatus::Errored;
             }
         }
     }
