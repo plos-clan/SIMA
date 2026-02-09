@@ -1,13 +1,13 @@
+use anyhow::Result;
+use spdlog::sink::{RotatingFileSink, RotationPolicy};
+use spdlog::{Level, LevelFilter, Logger, LoggerBuilder};
 use std::path::PathBuf;
 use std::sync::Arc;
-use spdlog::{Level, LevelFilter, Logger, LoggerBuilder};
-use spdlog::sink::{RotatingFileSink, RotationPolicy};
-use crate::error::{SimaResult};
 
 pub struct Log;
 
 impl Log {
-    pub fn new(logdir: Option<PathBuf>, verbose: bool) -> SimaResult<()> {
+    pub fn init(logdir: Option<PathBuf>, verbose: bool) -> Result<()> {
         let mut logger: LoggerBuilder = Logger::builder();
         logger.sinks(spdlog::default_logger().sinks().to_owned());
 
@@ -26,7 +26,7 @@ impl Log {
             }
 
             let log_name = format!("{}.log", env!("CARGO_PKG_NAME"));
-            let logdir = PathBuf::from(logdir).join(log_name);
+            let logdir = logdir.join(log_name);
 
             let file_sink: Arc<RotatingFileSink> = Arc::new(
                 RotatingFileSink::builder()
@@ -34,13 +34,17 @@ impl Log {
                     .rotation_policy(RotationPolicy::Daily { hour: 0, minute: 0 })
                     .rotate_on_open(false)
                     .build()
-                    .unwrap(),
+                    .map_err(|e| anyhow::anyhow!("Failed to create log sink: {e}"))?,
             );
 
             logger.sink(file_sink);
         }
 
-        let logger = Arc::new(logger.build().unwrap());
+        let logger = Arc::new(
+            logger
+                .build()
+                .map_err(|e| anyhow::anyhow!("Failed to build logger: {e}"))?,
+        );
         let _ = spdlog::swap_default_logger(logger);
 
         Ok(())

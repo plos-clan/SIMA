@@ -1,6 +1,6 @@
+use anyhow::{Context, Result};
 use std::env;
 use std::process::{Command, Stdio};
-use anyhow::{Context, Result};
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -19,7 +19,7 @@ fn run_init() -> Result<()> {
     let tests_dir = project_root.join("tests");
 
     let status = Command::new("cargo")
-        .args(&["build", "-p", "sima-init"])
+        .args(["build", "-p", "sima-init"])
         .status()?;
     if !status.success() {
         anyhow::bail!("Failed to build sima-init");
@@ -39,7 +39,7 @@ fn run_init() -> Result<()> {
     );
 
     let status = Command::new("unshare")
-        .args(&[
+        .args([
             "--pid",
             "--mount",
             "--fork",

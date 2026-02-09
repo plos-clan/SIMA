@@ -4,10 +4,20 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.101"
+figlet-rs = "0.1.5"
 platform-info = "2.0.5"
-serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"
-shell-words = "1.1.1"
 spdlog-rs = "0.5.2"
-thiserror = "2.0.18"
 
+[dependencies.nix]
+version = "0.31.1"
+features = ["signal", "process"]
+
+[dependencies.serde]
+version = "1.0.228"
+features = ["derive"]
+
+[dependencies.tokio]
+version = "1.49.0"
+features = ["rt-multi-thread", "macros", "process", "signal", "sync", "time"]
