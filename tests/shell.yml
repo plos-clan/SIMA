@@ -1,3 +1,3 @@
 name: shell
 description: userspace shell
-cmdline: /bin/sh
+cmdline: /bin/sh -c "while true; do echo 'I am alive'; sleep 1; done"

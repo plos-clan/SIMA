@@ -5,6 +5,7 @@ use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::Pid;
 use spdlog::{error, info, warn};
 use std::collections::HashMap;
+use std::os::unix::process::CommandExt;
 use std::process::Command;
 use std::time::Duration;
 use tokio::signal::unix::Signal as TokioSignal;
