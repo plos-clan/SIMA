@@ -1,0 +1,13 @@
+[package]
+name = "sima"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "simactl"
+path = "src/main.rs"
+
+[dependencies]
+sima-proto = { path = "../sima-proto" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"

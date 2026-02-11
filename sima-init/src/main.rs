@@ -2,6 +2,7 @@
 #![forbid(clippy::unwrap_used)]
 
 mod config;
+mod ipc;
 mod logger;
 mod service;
 

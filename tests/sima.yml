@@ -1,2 +1,2 @@
 services:
-  - /etc/sima.d/shell.yml
+  - /etc/sima.d/terminal.yml

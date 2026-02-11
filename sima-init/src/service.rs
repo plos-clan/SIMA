@@ -1,8 +1,11 @@
 use crate::config::{ServiceConfig, SimaConfig};
+use crate::ipc::{IpcCommand, IpcServer, handle_client};
 use anyhow::Result;
+use nix::sys::reboot::{RebootMode, reboot};
 use nix::sys::signal::{self, Signal};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::Pid;
+use sima_proto::ServiceInfo;
 use spdlog::{error, info, warn};
 use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
@@ -10,6 +13,7 @@ use std::process::Command;
 use std::time::Duration;
 use tokio::signal::unix::Signal as TokioSignal;
 use tokio::signal::unix::{SignalKind, signal as tokio_signal};
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -68,19 +72,20 @@ impl ServiceManager {
     pub async fn run(&mut self) -> Result<()> {
         for (name, config) in &self.configs {
             if let Some(state) = self.states.get_mut(name) {
-                Self::start_service(name, config, state, &mut self.pid_map);
+                Self::launch_service(name, config, state, &mut self.pid_map);
             }
         }
         self.event_loop().await
     }
 
-    fn start_service(
+    fn launch_service(
         name: &str,
         config: &ServiceConfig,
         state: &mut ServiceState,
         pid_map: &mut HashMap<Pid, String>,
     ) {
         if state.status == ServiceStatus::Running {
+            info!("Service {} is already running", name);
             return;
         }
 
@@ -96,6 +101,63 @@ impl ServiceManager {
                 error!("Failed to start service {}: {}", name, e);
             }
         }
+    }
+
+    fn stop_service(&mut self, name: &str) {
+        let Some(state) = self.states.get(name) else {
+            warn!("Service {} not found", name);
+            return;
+        };
+
+        let Some(pid) = state.pid else {
+            info!("Service {} is not running", name);
+            return;
+        };
+
+        info!("Stopping service: {} (PID: {})", name, pid);
+        let pgid = Pid::from_raw(-pid.as_raw());
+        if let Err(e) = signal::kill(pgid, Signal::SIGTERM) {
+            if e != nix::Error::ESRCH {
+                warn!("Failed to send SIGTERM to {}: {}", name, e);
+            }
+        }
+    }
+
+    fn start_service(&mut self, name: &str) {
+        let Some(config) = self.configs.get(name).cloned() else {
+            warn!("Service {} not found in config", name);
+            return;
+        };
+
+        let Some(state) = self.states.get_mut(name) else {
+            return;
+        };
+
+        Self::launch_service(name, &config, state, &mut self.pid_map);
+    }
+
+    fn restart_service(&mut self, name: &str) {
+        self.stop_service(name);
+        // Note: actual restart happens after process exits and reap_zombies is called
+        // For immediate restart, we'd need to track pending restarts
+        // For now, just start it (if already stopped, it will start; if running, stop was sent)
+        self.start_service(name);
+    }
+
+    fn get_status(&self) -> Vec<ServiceInfo> {
+        self.configs
+            .keys()
+            .map(|name| {
+                let state = self.states.get(name);
+                ServiceInfo {
+                    name: name.clone(),
+                    pid: state.and_then(|s| s.pid).map(|p| p.as_raw()),
+                    running: state
+                        .map(|s| s.status == ServiceStatus::Running)
+                        .unwrap_or(false),
+                }
+            })
+            .collect()
     }
 
     fn reap_zombies(&mut self) {
@@ -120,7 +182,7 @@ impl ServiceManager {
         };
 
         if let Some(name) = self.pid_map.remove(&pid) {
-            info!("Service {} (PID {}) {:?}", name, pid, status);
+            info!("Service {} (PID {}) exited: {:?}", name, pid, status);
 
             if let Some(state) = self.states.get_mut(&name) {
                 state.pid = None;
@@ -132,6 +194,9 @@ impl ServiceManager {
     }
 
     async fn event_loop(&mut self) -> Result<()> {
+        let (cmd_tx, mut cmd_rx) = mpsc::channel::<IpcCommand>(32);
+        let ipc_server = IpcServer::new()?;
+
         let mut sigchld = tokio_signal(SignalKind::child())?;
         let mut sigterm = tokio_signal(SignalKind::terminate())?;
         let mut sigint = tokio_signal(SignalKind::interrupt())?;
@@ -142,13 +207,25 @@ impl ServiceManager {
             tokio::select! {
                 _ = sigchld.recv() => {
                     self.reap_zombies();
-                },
-                Some(_) = sigterm.recv() => {
+                }
+                result = ipc_server.accept() => {
+                    if let Ok(stream) = result {
+                        if let Err(e) = handle_client(stream, &cmd_tx).await {
+                            error!("IPC client error: {}", e);
+                        }
+                    }
+                }
+                Some(cmd) = cmd_rx.recv() => {
+                    if self.handle_ipc_command(cmd, &mut sigchld).await {
+                        break;
+                    }
+                }
+                _ = sigterm.recv() => {
                     info!("Received SIGTERM, shutting down...");
                     self.perform_shutdown(&mut sigchld).await;
                     break;
                 }
-                Some(_) = sigint.recv() => {
+                _ = sigint.recv() => {
                     info!("Received SIGINT, shutting down...");
                     self.perform_shutdown(&mut sigchld).await;
                     break;
@@ -156,6 +233,51 @@ impl ServiceManager {
             }
         }
         Ok(())
+    }
+
+    /// Returns true if event loop should exit
+    async fn handle_ipc_command(&mut self, cmd: IpcCommand, sigchld: &mut TokioSignal) -> bool {
+        match cmd {
+            IpcCommand::Start(name) => {
+                self.start_service(&name);
+                false
+            }
+            IpcCommand::Stop(name) => {
+                self.stop_service(&name);
+                false
+            }
+            IpcCommand::Restart(name) => {
+                self.restart_service(&name);
+                false
+            }
+            IpcCommand::Status(tx) => {
+                let _ = tx.send(self.get_status());
+                false
+            }
+            IpcCommand::Poweroff => {
+                info!("Poweroff requested via IPC");
+                self.perform_shutdown(sigchld).await;
+                let _ = reboot(RebootMode::RB_POWER_OFF);
+                true
+            }
+            IpcCommand::Reboot => {
+                info!("Reboot requested via IPC");
+                self.perform_shutdown(sigchld).await;
+                let _ = reboot(RebootMode::RB_AUTOBOOT);
+                true
+            }
+            IpcCommand::SoftReboot => {
+                info!("Soft-reboot requested via IPC");
+                self.perform_shutdown(sigchld).await;
+                self.exec_self();
+            }
+        }
+    }
+
+    fn exec_self(&self) -> ! {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "/sbin/sima-init".into());
+        let err = Command::new(&exe).exec();
+        panic!("soft-reboot exec failed: {}", err);
     }
 
     async fn perform_shutdown(&mut self, sigchld: &mut TokioSignal) {

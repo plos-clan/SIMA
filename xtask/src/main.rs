@@ -28,13 +28,13 @@ fn run_init() -> Result<()> {
     let script = format!(
         "mount -t tmpfs tmpfs /etc && \
          mount -t tmpfs tmpfs /var/log && \
+         mount -t tmpfs tmpfs /run && \
          mkdir -p /etc/sima.d && \
-         cp {sima_src} /etc/sima.yml && \
-         cp {shell_src} /etc/sima.d/shell.yml && \
-         echo '--- Environment Ready: /etc and /var/log isolated ---' && \
+         cp {sima_yml} /etc/sima.yml && \
+         cp -r {sima_d}/* /etc/sima.d/ && \
          exec {bin}",
-        sima_src = tests_dir.join("sima.yml").display(),
-        shell_src = tests_dir.join("shell.yml").display(),
+        sima_yml = tests_dir.join("sima.yml").display(),
+        sima_d = tests_dir.join("sima.d").display(),
         bin = binary_path.display()
     );
 

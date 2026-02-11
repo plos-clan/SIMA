@@ -12,7 +12,10 @@ spdlog-rs = "0.5.2"
 
 [dependencies.nix]
 version = "0.31.1"
-features = ["signal", "process"]
+features = ["signal", "process", "reboot"]
+
+[dependencies.sima-proto]
+path = "../sima-proto"
 
 [dependencies.serde]
 version = "1.0.228"
@@ -20,4 +23,4 @@ features = ["derive"]
 
 [dependencies.tokio]
 version = "1.49.0"
-features = ["rt-multi-thread", "macros", "process", "signal", "sync", "time"]
+features = ["rt-multi-thread", "macros", "process", "signal", "sync", "time", "net", "io-util"]

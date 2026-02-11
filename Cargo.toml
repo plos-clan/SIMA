@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "sima-init",
+    "sima-cli",
+    "sima-proto",
     "xtask",
 ]
 resolver = "3"
