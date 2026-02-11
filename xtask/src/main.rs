@@ -19,10 +19,10 @@ fn run_init() -> Result<()> {
     let tests_dir = project_root.join("tests");
 
     let status = Command::new("cargo")
-        .args(["build", "-p", "sima-init"])
+        .args(["build", "--workspace"])
         .status()?;
     if !status.success() {
-        anyhow::bail!("Failed to build sima-init");
+        anyhow::bail!("Failed to build sima");
     }
 
     let script = format!(
