@@ -9,6 +9,7 @@ pub struct ServiceConfig {
     pub name: String,
     pub description: Option<String>,
     pub cmdline: String,
+    pub environment: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,5 +42,33 @@ impl SimaConfig {
             .collect::<Result<Vec<ServiceConfig>>>()?;
 
         Ok(Self { services })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServiceConfig;
+
+    #[test]
+    fn service_config_deserializes_environment_with_shell_escapes() {
+        let yaml = r#"
+name: shell
+description: userspace shell
+cmdline: /bin/sh
+environment:
+  - 'PATH=/usr/bin:/bin:/sbin'
+  - 'PS1=\u@\h \w# '
+"#;
+
+        let config: ServiceConfig =
+            serde_yaml::from_str(yaml).expect("service config should parse");
+
+        assert_eq!(
+            config.environment,
+            Some(vec![
+                "PATH=/usr/bin:/bin:/sbin".to_string(),
+                r"PS1=\u@\h \w# ".to_string(),
+            ])
+        );
     }
 }

@@ -1,3 +1,9 @@
 name: shell
 description: userspace shell
 cmdline: /bin/sh
+environment:
+  - 'PATH=/usr/bin:/bin:/sbin'
+  - 'PS1=\u@\h \w# '
+  - 'HOME=/root'
+  - 'TERM=linux'
+  - 'PWD=/'

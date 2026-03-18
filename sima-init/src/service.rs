@@ -1,6 +1,6 @@
 use crate::config::{ServiceConfig, SimaConfig};
 use crate::ipc::{IpcCommand, IpcServer, handle_client};
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use nix::sys::reboot::{RebootMode, reboot};
 use nix::sys::signal::{self, Signal};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
@@ -59,12 +59,15 @@ impl ServiceManager {
         }
     }
 
-    fn spawn_process(cmdline: &str) -> Result<Pid> {
-        let child = Command::new("/bin/sh")
-            .arg("-c")
-            .arg(format!("exec {}", cmdline))
-            .process_group(0)
-            .spawn()?;
+    fn spawn_process(cmdline: &str, environment: Option<&[String]>) -> Result<Pid> {
+        let mut command = Command::new("/bin/sh");
+        command.arg("-c").arg(format!("exec {}", cmdline));
+
+        if let Some(environment) = environment {
+            command.envs(parse_environment(environment)?);
+        }
+
+        let child = command.process_group(0).spawn()?;
 
         Ok(Pid::from_raw(child.id() as i32))
     }
@@ -90,7 +93,7 @@ impl ServiceManager {
         }
 
         info!("Starting service: {}", name);
-        match Self::spawn_process(&config.cmdline) {
+        match Self::spawn_process(&config.cmdline, config.environment.as_deref()) {
             Ok(pid) => {
                 info!("Service {} started (PID: {})", name, pid);
                 state.pid = Some(pid);
@@ -316,5 +319,59 @@ impl ServiceManager {
                 warn!("Failed to send signal to {}: {}", name, e);
             }
         }
+    }
+}
+
+fn parse_environment(environment: &[String]) -> Result<Vec<(String, String)>> {
+    environment
+        .iter()
+        .map(|entry| {
+            let (name, value) = entry.split_once('=').with_context(|| {
+                format!("invalid environment entry `{entry}`: expected KEY=VALUE")
+            })?;
+
+            if name.is_empty() {
+                bail!("invalid environment entry `{entry}`: variable name cannot be empty");
+            }
+
+            Ok((name.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_environment;
+
+    #[test]
+    fn parse_environment_supports_multiple_variables() {
+        let environment = vec![
+            "PATH=/usr/bin:/bin".to_string(),
+            "TERM=xterm-256color".to_string(),
+            "COMPOSITE=a=b=c".to_string(),
+        ];
+
+        let parsed = parse_environment(&environment).expect("environment should parse");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("PATH".to_string(), "/usr/bin:/bin".to_string()),
+                ("TERM".to_string(), "xterm-256color".to_string()),
+                ("COMPOSITE".to_string(), "a=b=c".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_environment_rejects_missing_separator() {
+        let err = parse_environment(&["BROKEN".to_string()]).expect_err("parse should fail");
+        assert!(err.to_string().contains("expected KEY=VALUE"));
+    }
+
+    #[test]
+    fn parse_environment_rejects_empty_name() {
+        let err = parse_environment(&["=value".to_string()]).expect_err("parse should fail");
+        assert!(err.to_string().contains("variable name cannot be empty"));
     }
 }
