@@ -5,6 +5,7 @@ members = [
     "sima-proto",
     "xtask",
 ]
+default-members = ["sima-init", "sima-cli"]
 resolver = "3"
 
 [profile.release]

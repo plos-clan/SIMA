@@ -1,42 +1,61 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::env;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-    let task = args.get(1).map(|s| s.as_str());
+const USAGE: &str = "Usage: cargo xtask run [--release]";
 
-    match task {
-        Some("run") => run_init()?,
-        _ => println!("Usage: cargo xtask [run]"),
+fn main() -> Result<()> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let task = args.first().map(String::as_str);
+
+    if matches!(task, None | Some("--help" | "-h")) {
+        println!("{USAGE}");
+        return Ok(());
     }
-    Ok(())
+    if task != Some("run") {
+        bail!("{USAGE}");
+    }
+    let release = match &args[1..] {
+        [] => false,
+        [option] if option == "--release" => true,
+        _ => bail!("{USAGE}"),
+    };
+
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("Failed to locate the workspace root")?;
+    run_init(project_root, release)
 }
 
-fn run_init() -> Result<()> {
-    let project_root = env::current_dir()?;
-    let binary_path = project_root.join("target/debug/sima-init");
-    let tests_dir = project_root.join("tests");
-
-    let status = Command::new("cargo")
-        .args(["build", "--workspace"])
-        .status()?;
-    if !status.success() {
-        anyhow::bail!("Failed to build sima");
+fn run_init(project_root: &Path, release: bool) -> Result<()> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut command = Command::new(cargo);
+    command.current_dir(project_root).arg("build");
+    if release {
+        command.arg("--release");
+    }
+    if !command
+        .status()
+        .context("Failed to start Cargo build")?
+        .success()
+    {
+        bail!("Failed to build SIMA");
     }
 
-    let script = format!(
-        "mount -t tmpfs tmpfs /etc && \
+    let artifact_dir = env::var_os("CARGO_BUILD_ARTIFACT_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("target/artifacts"));
+    let binary_path = project_root.join(artifact_dir).join("sima-init");
+    let tests_dir = project_root.join("tests");
+
+    let script = "mount -t tmpfs tmpfs /etc && \
          mount -t tmpfs tmpfs /var/log && \
          mount -t tmpfs tmpfs /run && \
          mkdir -p /etc/sima.d && \
-         cp {sima_yml} /etc/sima.yml && \
-         cp -r {sima_d}/* /etc/sima.d/ && \
-         exec {bin}",
-        sima_yml = tests_dir.join("sima.yml").display(),
-        sima_d = tests_dir.join("sima.d").display(),
-        bin = binary_path.display()
-    );
+         cp \"$1/sima.yml\" /etc/sima.yml && \
+         cp -r \"$1/sima.d/.\" /etc/sima.d/ && \
+         exec \"$2\"";
 
     let status = Command::new("unshare")
         .args([
@@ -47,8 +66,11 @@ fn run_init() -> Result<()> {
             "--map-root-user",
             "bash",
             "-c",
-            &script,
+            script,
+            "sima-init",
         ])
+        .arg(tests_dir)
+        .arg(binary_path)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
