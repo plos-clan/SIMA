@@ -6,3 +6,7 @@ artifact-dir = "target/artifacts"
 
 [unstable]
 unstable-options = true
+
+[target.'cfg(target_os = "linux")']
+linker = ".cargo/sima-linker.sh"
+rustflags = ["-C", "prefer-dynamic", "-C", "link-arg=-Wl,-rpath,$ORIGIN"]

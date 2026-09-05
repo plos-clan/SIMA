@@ -5,9 +5,9 @@ members = [
     "sima-proto",
     "xtask",
 ]
-default-members = ["sima-init", "sima-cli"]
+default-members = ["sima-init", "sima-cli", "sima-proto"]
 resolver = "3"
 
 [profile.release]
-lto = "thin"
+lto = false
 opt-level = "z"

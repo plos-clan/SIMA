@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use sima_proto::{
-    FALLBACK_SOCKET_PATH, PRIMARY_SOCKET_PATH, Request, Response, decode, encode,
+    FALLBACK_SOCKET_PATH, PRIMARY_SOCKET_PATH, Request, Response, decode_response, encode_request,
     should_fallback_from_connect_error,
 };
 use std::io::{Read, Write};
@@ -74,7 +74,7 @@ fn send_request(req: Request) -> Result<Response> {
         }
     };
 
-    let data = encode(&req).context("Failed to encode request")?;
+    let data = encode_request(&req).context("Failed to encode request")?;
     stream.write_all(&data).context("Failed to send request")?;
     stream
         .shutdown(Shutdown::Write)
@@ -85,7 +85,7 @@ fn send_request(req: Request) -> Result<Response> {
         .read_to_end(&mut buf)
         .context("Failed to read response")?;
 
-    let resp: Response = decode(&buf).context("Failed to decode response")?;
+    let resp = decode_response(&buf).context("Failed to decode response")?;
     Ok(resp)
 }
 

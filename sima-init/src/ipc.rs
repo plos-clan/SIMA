@@ -1,6 +1,7 @@
 use anyhow::Result;
 use sima_proto::{
-    Request, Response, ServiceInfo, decode, encode, should_fallback_from_socket_error, socket_paths,
+    Request, Response, ServiceInfo, decode_request, encode_response,
+    should_fallback_from_socket_error, socket_paths,
 };
 use spdlog::{error, info, warn};
 use std::fs;
@@ -133,12 +134,12 @@ pub async fn handle_client(
         return Ok(());
     }
 
-    let req: Request = match decode(&buf) {
+    let req = match decode_request(&buf) {
         Ok(r) => r,
         Err(e) => {
             error!("Failed to decode IPC request: {}", e);
             let resp = Response::Error(format!("Invalid request: {}", e));
-            let data = encode(&resp)?;
+            let data = encode_response(&resp)?;
             stream.write_all(&data).await?;
             return Ok(());
         }
@@ -147,7 +148,7 @@ pub async fn handle_client(
     info!("IPC request: {:?}", req);
     let resp = process_request(req, cmd_tx).await;
 
-    let data = encode(&resp)?;
+    let data = encode_response(&resp)?;
     stream.write_all(&data).await?;
     Ok(())
 }
