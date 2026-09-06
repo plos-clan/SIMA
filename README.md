@@ -106,7 +106,6 @@ After building, verify the shared-library deployment with:
 ```sh
 cargo test --workspace
 cargo build --release
-bash tests/shared-library-smoke.sh
 ```
 
 The smoke test needs Bash, binutils (`readelf`), and permission to create user,

@@ -1,0 +1,3 @@
+name: udevadm
+description: udevd event service
+cmdline: /usr/bin/udevadm trigger --verbose --action=add --subsystem-match=net --settle --wait-daemon=10

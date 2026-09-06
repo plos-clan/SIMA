@@ -5,6 +5,33 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const RUNTIME_NAME: &str = "libsima_runtime.so";
+const LIBRARY_DIR: &str = "/usr/lib/sima";
+
+fn replace_dynamic_string(
+    runtime_bytes: &mut [u8],
+    original: &str,
+    replacement: &str,
+) -> Result<(), Box<dyn Error>> {
+    if replacement.len() > original.len() {
+        return Err(
+            format!("The Rust runtime has insufficient space to replace {original:?}").into(),
+        );
+    }
+    let original_string = format!("{original}\0");
+    let offsets: Vec<_> = runtime_bytes
+        .windows(original_string.len())
+        .enumerate()
+        .filter_map(|(offset, bytes)| (bytes == original_string.as_bytes()).then_some(offset))
+        .collect();
+    let [offset] = offsets.as_slice() else {
+        return Err(
+            format!("Expected one unambiguous {original:?} string in the Rust runtime").into(),
+        );
+    };
+    runtime_bytes[*offset..*offset + original_string.len()].fill(0);
+    runtime_bytes[*offset..*offset + replacement.len()].copy_from_slice(replacement.as_bytes());
+    Ok(())
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo::rerun-if-changed=build.rs");
@@ -62,30 +89,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         .output()
         .map_err(|error| format!("Failed to run readelf; install binutils: {error}"))?;
     let expected_name = format!("[{original_name}]");
+    let dynamic_text = String::from_utf8_lossy(&dynamic_section.stdout);
     if !dynamic_section.status.success()
-        || !String::from_utf8_lossy(&dynamic_section.stdout)
+        || !dynamic_text
             .lines()
             .any(|line| line.contains("(SONAME)") && line.trim_end().ends_with(&expected_name))
     {
         return Err("The Rust runtime does not have the expected ELF SONAME".into());
     }
     let mut runtime_bytes = fs::read(runtime)?;
-    let original_string = format!("{original_name}\0");
-    let offsets: Vec<_> = runtime_bytes
-        .windows(original_string.len())
-        .enumerate()
-        .filter_map(|(offset, bytes)| (bytes == original_string.as_bytes()).then_some(offset))
-        .collect();
-    let [offset] = offsets.as_slice() else {
-        return Err("Expected one unambiguous SONAME string in the Rust runtime".into());
-    };
-    if RUNTIME_NAME.len() > original_name.len() {
-        return Err(
-            "The Rust runtime SONAME has insufficient space for its deployment name".into(),
-        );
+    replace_dynamic_string(&mut runtime_bytes, original_name, RUNTIME_NAME)?;
+    for line in dynamic_text
+        .lines()
+        .filter(|line| line.contains("(RUNPATH)") || line.contains("(RPATH)"))
+    {
+        let search_path = line
+            .split_once('[')
+            .and_then(|(_, value)| value.strip_suffix(']'))
+            .ok_or("Failed to read the Rust runtime library search path")?;
+        replace_dynamic_string(&mut runtime_bytes, search_path, LIBRARY_DIR)?;
     }
-    runtime_bytes[*offset..*offset + original_string.len()].fill(0);
-    runtime_bytes[*offset..*offset + RUNTIME_NAME.len()].copy_from_slice(RUNTIME_NAME.as_bytes());
 
     let private_dir =
         PathBuf::from(env::var_os("OUT_DIR").ok_or("Missing build output directory")?);

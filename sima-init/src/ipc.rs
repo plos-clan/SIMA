@@ -1,9 +1,9 @@
 use anyhow::Result;
+use log::{error, info, warn};
 use sima_proto::{
     Request, Response, ServiceInfo, decode_request, encode_response,
     should_fallback_from_socket_error, socket_paths,
 };
-use spdlog::{error, info, warn};
 use std::fs;
 use std::io;
 use std::os::unix::fs::FileTypeExt;

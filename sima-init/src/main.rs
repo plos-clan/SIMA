@@ -4,15 +4,16 @@
 mod config;
 mod ipc;
 mod logger;
+mod mount;
 mod service;
 
 use crate::config::SimaConfig;
 use crate::logger::Log;
+use crate::mount::MountService;
 use crate::service::ServiceManager;
-use figlet_rs::FIGfont;
+use figlet_rs::FIGlet;
+use log::{error as fatal, info};
 use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
-use spdlog::{error as fatal, info};
-use std::path::PathBuf;
 
 fn sysinfo_test() -> PlatformInfo {
     let pid = std::process::id();
@@ -21,7 +22,7 @@ fn sysinfo_test() -> PlatformInfo {
         std::process::exit(-1);
     }
 
-    if let Ok(font) = FIGfont::standard()
+    if let Ok(font) = FIGlet::standard()
         && let Some(banner) = font.convert("SIMA")
     {
         println!("{banner}");
@@ -31,8 +32,7 @@ fn sysinfo_test() -> PlatformInfo {
 
 #[tokio::main]
 async fn main() {
-    let logdir = PathBuf::from("/var/log/sima");
-    Log::init(Some(logdir), true).unwrap_or_else(|e| {
+    Log::init_logger().unwrap_or_else(|e| {
         eprintln!("ERROR: Failed to initialize logger: {e}");
         std::process::exit(-1);
     });
@@ -44,8 +44,10 @@ async fn main() {
     let sys_info = sysinfo_test();
     info!("Machine info: {}", sys_info.machine().display());
 
+    MountService::mount();
+
     let config = SimaConfig::load().unwrap_or_else(|e| {
-        eprintln!("ERROR: Failed to load config: {e}");
+        fatal!("ERROR: Failed to load config: {e}, Please check your /etc/sima.yml or /etc/sima.d/");
         std::process::exit(-1);
     });
 
