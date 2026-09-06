@@ -1,12 +1,12 @@
 use crate::config::{ServiceConfig, SimaConfig};
 use crate::ipc::{IpcCommand, IpcServer, handle_client};
 use anyhow::{Context, Result, bail};
+use log::{error, info, warn};
 use nix::sys::reboot::{RebootMode, reboot};
 use nix::sys::signal::{self, Signal};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::Pid;
 use sima_proto::ServiceInfo;
-use spdlog::{error, info, warn};
 use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
 use std::process::Command;

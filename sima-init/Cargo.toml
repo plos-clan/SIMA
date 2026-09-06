@@ -5,14 +5,15 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.101"
-figlet-rs = "0.1.5"
+env_logger = "0.11.11"
+figlet-rs = "1.0.0"
 platform-info = "2.0.5"
 serde_yaml = "0.9.34"
-spdlog-rs = "0.5.2"
+log = "0.4.34"
 
 [dependencies.nix]
 version = "0.31.1"
-features = ["signal", "process", "reboot"]
+features = ["signal", "process", "reboot", "fs", "mount"]
 
 [dependencies.sima-proto]
 path = "../sima-proto"

@@ -1,2 +1,3 @@
 services:
-  - /etc/sima.d/shell.yml
+  - /etc/sima.d/udevd.yml
+  - /etc/sima.d/udevadm.yml
